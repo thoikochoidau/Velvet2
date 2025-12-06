@@ -188,3 +188,62 @@ Velvet2PrefsManager *prefsManager;
         %init;
     }
 }
+#import <CoreImage/CoreImage.h>
+
+// MARK: - Enhanced Music Player Support for Velvet 2
+%hook CSMediaControlsViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+
+    UIView *mediaControlsView = self.view;
+    if (!mediaControlsView) return;
+
+    // Artwork view (the big square album art)
+    UIImageView *artworkView = [mediaControlsView valueForKey:@"_artworkView"];
+    if (artworkView && artworkView.image) {
+        // Remove any old glow layer
+        artworkView.layer.shadowOpacity = 0;
+
+        // Extract dominant/vibrant color from album art
+        UIColor *dominant = [self dominantColorFromImage:artworkView.image] ?: [UIColor systemBlueColor];
+
+        // Add glow
+        artworkView.layer.shadowColor   = dominant.CGColor;
+        artworkView.layer.shadowOpacity = 0.85;
+        artworkView.layer.shadowRadius  = 14.0;
+        artworkView.layer.shadowOffset  = CGSizeZero;
+        artworkView.layer.masksToBounds = NO;
+    }
+
+    // Scrubber / progress bar
+    UISlider *scrubber = [mediaControlsView valueForKey:@"_routeSlider"] ?: 
+                         [mediaControlsView valueForKey:@"_timeSlider"];
+    if (scrubber) {
+        scrubber.minimumTrackTintColor = [UIColor whiteColor];
+        scrubber.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.3];
+        scrubber.thumbTintColor       = [UIColor whiteColor];
+    }
+}
+
+// Simple dominant color extractor (fast enough for real-time)
+%new
+- (UIColor *)dominantColorFromImage:(UIImage *)image {
+    CGSize size = CGSizeMake(1, 1);
+    UIGraphicsBeginImageContextWithOptions(size, YES, 1.0);
+    [image drawInRect:CGRectMake(0, 0, 1, 1)];
+    uint8_t rgba[4] = {0};
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    CGImageRef imgRef = CGBitmapContextCreateImage(ctx);
+    CGContextDrawImage(ctx, CGRectMake(0, 0, 1, 1), imgRef);
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef bitmapContext = CGBitmapContextCreate(rgba, 1, 1, 8, 4, space, kCGImageAlphaPremultipliedLast);
+    CGContextDrawImage(bitmapContext, CGRectMake(0, 0, 1, 1), imgRef);
+    CGContextRelease(bitmapContext);
+    CGColorSpaceRelease(space);
+    CGImageRelease(imgRef);
+    UIGraphicsEndImageContext();
+
+    return [UIColor colorWithRed:rgba[0]/255.0 green:rgba[1]/255.0 blue:rgba[2]/255.0 alpha:1.0];
+}
+%end
